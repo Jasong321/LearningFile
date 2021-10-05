@@ -1,5 +1,3 @@
-
-
 # Hadoop是什么？
 
 Hadoop是由java语言编写的，在分布式服务器集群上存储海量数据并运行分布式分析应用的开源框架，其核心部件是<font color=red>**HDFS**</font>与<font color=red>**MapReduce**</font>。
