@@ -9,5 +9,5 @@
 
 拉取命令：
 ```
-git fetch git@github.com:Jasong321/LearningFile.git
+ git pull git@github.com:Jasong321/LearningFile.git
 ```
