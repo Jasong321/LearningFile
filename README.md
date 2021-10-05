@@ -4,6 +4,8 @@
 
 推送命令：
 ```
+ git add . 
+ git commit -m "update"
  git push git@github.com:Jasong321/LearningFile.git --force
 ```
 
