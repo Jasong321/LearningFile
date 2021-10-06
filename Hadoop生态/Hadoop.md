@@ -42,7 +42,7 @@ HDFS应用需要一个“一次写入多次读取”的文件访问模型。一�
 
 一个应用请求的计算，离它操作的数据越近就越高效，在数据达到海量级别的时候更是如此。因为这样就能降低网络阻塞的影响，提高系统数据的吞吐量。将计算移动到数据附近，比之将数据移动到应用所在显然更好。HDFS为应用提供了将它们自己移动到数据附近的接口。
 
-HDFS是Master和Slave的主从结构。主要由Name-Node、Secondary NameNode、DataNode构成。
+HDFS是Master和Slave的主从结构。主要由NameNode、Secondary NameNode、DataNode构成。
 
 
 
@@ -57,6 +57,182 @@ HDFS采用master/slave架构。一个HDFS集群是由一个Namenode和一定数�
 HDFS支持传统的层次型文件组织结构。用户或者应用程序可以创建目录，然后将文件保存在这些目录里。文件系统名字空间的层次结构和大多数现有的文件系统类似：用户可以创建、删除、移动或重命名文件。当前，HDFS不支持用户磁盘配额和访问权限控制，也不支持硬链接和软链接。但是HDFS架构并不妨碍实现这些特性。
 
 Namenode负责维护文件系统的名字空间，任何对文件系统名字空间或属性的修改都将被Namenode记录下来。应用程序可以设置HDFS保存的文件的副本数目。文件副本的数目称为文件的副本系数，这个信息也是由Namenode保存的。
+
+### Secondary NameNode
+
+它并非NameNode的热备，当NameNode挂掉的时候，它并不能马上替换NameNode并提供服务。
+
+1. 辅助NameNode，分担其工作量。
+2. 定期合并Fsimage和Edits，并推送给NameNode。
+3. 在紧急情况下，可辅助恢复NameNode。
+
+
+
+### NN和2NN
+
+NameNode启动：
+
+1、第一次启动namenode格式化后，创建fsimage和edits文件。如果不是第一次启动，直接加载编辑日志和镜像文件到内存。
+
+2、客户端对元数据进行增删改的请求。
+
+3、namenode记录操作日志，更新滚动日志。
+
+4、namenode在内存中对数据进行增删改
+
+2NN启动：
+
+1、Secondary NameNode询问namenode是否需要checkpoint。直接带回namenode是否检查结果。
+
+2、Secondary NameNode请求执行checkpoint。
+
+3、namenode滚动正在写的edits日志
+
+4、将滚动前的编辑日志和镜像文件拷贝到Secondary NameNode
+
+5、Secondary NameNode加载编辑日志和镜像文件到内存，并合并。
+
+6、生成新的镜像文件fsimage.chkpoint
+
+7、拷贝fsimage.chkpoint到namenode
+
+8、namenode将fsimage.chkpoint重新命名成fsimage
+
+#### Fsimage和Edits解析
+
+namenode被格式化之后，将在/opt/module/hadoop-2.7.2/data/tmp/dfs/name/current目录中产生如下文件
+
+>fsimage_0000000000000000000
+>
+>fsimage_0000000000000000000.md5
+>
+>seen_txid
+>
+>VERSION
+
+1、Fsimage文件：HDFS文件系统元数据的一个永久性的检查点，其中包含HDFS文件系统的所有目录和文件idnode的序列化信息。
+
+2、Edits文件：存放HDFS文件系统的所有更新操作的路径，文件系统客户端执行的所有写操作首先会被记录到edits文件中。  
+
+3、seen_txid文件保存的是一个数字，就是最后一个edits_的数字
+
+4、每次Namenode启动的时候都会将fsimage文件读入内存，并从00001开始到seen_txid中记录的数字依次执行每个edits里面的更新操作，保证内存中的元数据信息是最新的、同步的，可以看成Namenode启动的时候就将fsimage和edits文件进行了合并。
+
+#### CheckPoint时间设置
+
+1、通常情况下，SecondaryNameNode每隔一小时执行一次。
+
+[hdfs-default.xml]
+
+```xml
+<property>
+  <name>dfs.namenode.checkpoint.period</name>
+  <value>3600</value>
+</property>
+```
+
+2、一分钟检查一次操作次数，当操作次数达到1百万时，SecondaryNameNode执行一次。。
+
+[hdfs-default.xml]
+
+```xml
+<property>
+  <name>dfs.namenode.checkpoint.txns</name>
+  <value>1000000</value>
+<description>操作动作次数</description>
+</property>
+
+<property>
+  <name>dfs.namenode.checkpoint.check.period</name>
+  <value>60</value>
+<description> 1分钟检查一次操作次数</description>
+</property>
+```
+
+
+
+#### SecondaryNameNode目录结构
+
+Secondary NameNode用来监控HDFS状态的辅助后台程序，每隔一段时间获取HDFS元数据的快照。
+
+在/opt/module/hadoop-2.7.2/data/tmp/dfs/namesecondary/current这个目录中查看SecondaryNameNode目录结构。
+
+>edits_0000000000000000001-0000000000000000002
+>
+>fsimage_0000000000000000002
+>
+>fsimage_0000000000000000002.md5
+>
+>VERSION
+
+SecondaryNameNode的namesecondary/current目录和主namenode的current目录的布局相同。
+
+好处：在主namenode发生故障时（假设没有及时备份数据），可以从SecondaryNameNode恢复数据。
+
+#### 集群安全模式
+
+Namenode启动时，首先将映像文件（fsimage）载入内存，并执行编辑日志（edits）中的各项操作。一旦在内存中成功建立文件系统元数据的映像，则创建一个新的fsimage文件和一个空的编辑日志。此时，namenode开始监听datanode请求。但是此刻，namenode运行在安全模式，即namenode的文件系统对于客户端来说是只读的。
+
+系统中的数据块的位置并不是由namenode维护的，而是以块列表的形式存储在datanode中。在系统的正常操作期间，namenode会在内存中保留所有块位置的映射信息。在安全模式下，各个datanode会向namenode发送最新的块列表信息，namenode了解到足够多的块位置信息之后，即可高效运行文件系统。
+
+如果满足“最小复本条件”，namenode会在30秒钟之后就退出安全模式。所谓的最小复本条件指的是在整个文件系统中99.9%的块满足最小复本级别（默认值：dfs.replication.min=1）。在启动一个刚刚格式化的HDFS集群时，因为系统中还没有任何块，所以namenode不会进入安全模式。
+
+基本语法：
+
+集群处于安全模式，不能执行重要操作（写操作）。集群启动完成后，自动退出安全模式。
+
+```shell
+bin/hdfs dfsadmin -safemode get		（功能描述：查看安全模式状态）
+bin/hdfs dfsadmin -safemode enter  	（功能描述：进入安全模式状态）
+bin/hdfs dfsadmin -safemode leave	（功能描述：离开安全模式状态）
+bin/hdfs dfsadmin -safemode wait	（功能描述：等待安全模式状态）
+```
+
+
+
+### DataNode
+
+#### 工作机制
+
+1、一个数据块在datanode上以文件形式存储在磁盘上，包括两个文件，一个是数据本身，一个是元数据包括数据块的长度，块数据的校验和，以及时间戳。
+
+2、DataNode启动后向namenode注册，通过后，周期性（1小时）的向namenode上报所有的块信息。
+
+3、心跳是每3秒一次，心跳返回结果带有namenode给该datanode的命令如复制块数据到另一台机器，或删除某个数据块。如果超过10分钟没有收到某个datanode的心跳，则认为该节点不可用。
+
+4、集群运行中可以安全加入和退出一些机器
+
+#### 数据完整性
+
+1、当DataNode读取block的时候，它会计算checksum。
+
+2、如果计算后的checksum，与block创建时值不一样，说明block已经损坏。
+
+3、client读取其他DataNode上的block。
+
+4、datanode在其文件创建后周期验证checksum。
+
+掉线时限参数设置：
+
+datanode进程死亡或者网络故障造成datanode无法与namenode通信，namenode不会立即把该节点判定为死亡，要经过一段时间，这段时间暂称作超时时长。HDFS默认的超时时长为10分钟+30秒。如果定义超时时间为timeout，则超时时长的计算公式为：
+$$
+timeout = 2 * dfs.namenode.heartbeat.recheck-interval + 10 * dfs.heartbeat.interval。
+$$
+而默认的dfs.namenode.heartbeat.recheck-interval 大小为5分钟，dfs.heartbeat.interval默认为3秒。
+
+需要注意的是hdfs-site.xml 配置文件中的heartbeat.recheck.interval的单位为毫秒，dfs.heartbeat.interval的单位为秒。
+
+```xml
+<property>
+    <name>dfs.namenode.heartbeat.recheck-interval</name>
+    <value>300000</value>
+</property>
+<property>
+    <name> dfs.heartbeat.interval </name>
+    <value>3</value>
+</property>
+
+```
 
 
 
@@ -74,7 +250,7 @@ Namenode全权管理数据块的复制，它周期性地从集群中的每个Dat
 
 大型HDFS实例一般运行在跨越多个机架的计算机组成的集群上，不同机架上的两台机器之间的通讯需要经过交换机。在大多数情况下，同一个机架内的两台机器间的带宽会比不同机架的两台机器间的带宽大。
 
-通过一个[机架感知](https://hadoop.apache.org/docs/r1.0.4/cn/cluster_setup.html#Hadoop的机架感知)的过程，Namenode可以确定每个Datanode所属的机架id。一个简单但没有优化的策略就是将副本存放在不同的机架上。这样可以有效防止当整个机架失效时数据的丢失，并且允许读数据的时候充分利用多个机架的带宽。这种策略设置可以将副本均匀分布在集群中，有利于当组件失效情况下的负载均衡。但是，因为这种策略的一个写操作需要传输数据块到多个机架，这增加了写的代价。
+通过一个机架感知的过程，Namenode可以确定每个Datanode所属的机架id。一个简单但没有优化的策略就是将副本存放在不同的机架上。这样可以有效防止当整个机架失效时数据的丢失，并且允许读数据的时候充分利用多个机架的带宽。这种策略设置可以将副本均匀分布在集群中，有利于当组件失效情况下的负载均衡。但是，因为这种策略的一个写操作需要传输数据块到多个机架，这增加了写的代价。
 
 在大多数情况下，副本系数是3，HDFS的存放策略是将一个副本存放在本地机架的节点上，一个副本放在同一机架的另一个节点上，最后一个副本放在不同机架的节点上。这种策略减少了机架间的数据传输，这就提高了写操作的效率。机架的错误远远比节点的错误少，所以这个策略不会影响到数据的可靠性和可用性。于此同时，因为数据块只放在两个（不是三个）不同的机架上，所以此策略减少了读取数据时需要的网络传输总带宽。在这种策略下，副本并不是均匀分布在不同的机架上。三分之一的副本在一个节点上，三分之二的副本在一个机架上，其他副本均匀分布在剩下的机架中，这一策略在不损害数据可靠性和读取性能的情况下改进了写的性能。
 
@@ -145,3 +321,66 @@ HDFS被设计成支持大文件，适用HDFS的是那些需要处理大规模的
 ### 减少副本系数
 
 当一个文件的副本系数被减小后，Namenode会选择过剩的副本删除。下次心跳检测时会将该信息传递给Datanode。Datanode遂即移除相应的数据块，集群中的空闲空间加大。同样，在调用setReplication API结束和集群中空闲空间增加间会有一定的延迟。
+
+
+
+## HDFS读写流程
+
+### HDFS中的block、packet、chunk
+
+1、block
+这个大家应该知道，文件上传前需要分块，这个块就是block，一般为128MB，当然你可以去改，不顾不推荐。因为**块太小：寻址时间占比过高。块太大：Map任务数太少，作业执行速度变慢。**它是最大的一个单位。
+
+2、packet
+
+packet是第二大的单位，它是client端向DataNode，或DataNode的PipLine之间传数据的基本单位，默认64KB。
+
+3、chunk
+
+chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间进行数据校验的基本单位，默认512Byte，因为用作校验，故每个chunk需要带有4Byte的校验位。所以实际每个chunk写入packet的大小为516Byte。由此可见真实数据与校验值数据的比值约为128 : 1。（即64*1024 / 512）
+
+### HDFS写流程
+
+1、跟NameNode通信请求上传文件，NameNode检查目标文件是否已经存在，父目录是否已经存在
+
+2、NameNode返回是否可以上传
+
+3、Client先对文件进行切分，请求第一个block该传输到哪些DataNode服务器上
+
+4、NameNode返回3个DataNode服务器DataNode 1，DataNode 2，DataNode 3
+
+5、Client请求3台中的一台DataNode 1(网络拓扑上的就近原则，如果都一样，则随机挑选一台DataNode)上传数据（本质上是一个RPC调用，建立pipeline）,DataNode 1收到请求会继续调用DataNode 2,然后DataNode 2调用DataNode 3，将整个pipeline建立完成，然后逐级返回客户端
+
+6、Client开始往DataNode 1上传第一个block（先从磁盘读取数据放到一个本地内存缓存），以packet为单位。写入的时候DataNode会进行数据校验，它并不是通过一个packet进行一次校验而是以chunk为单位进行校验（512byte）。DataNode 1收到一个packet就会传给DataNode 2，DataNode 2传给DataNode 3，DataNode 1每传一个pocket会放入一个应答队列等待应答
+
+7、当一个block传输完成之后，Client再次请求NameNode上传第二个block的服务器.
+
+![img](https://img2018.cnblogs.com/blog/699090/201906/699090-20190626155745864-1227676006.png)
+
+### HDFS读流程
+
+1、与NameNode通信查询元数据，找到文件块所在的DataNode服务器
+
+2、挑选一台DataNode（网络拓扑上的就近原则，如果都一样，则随机挑选一台DataNode）服务器，请求建立socket流
+
+3、DataNode开始发送数据(从磁盘里面读取数据放入流，以packet（一个packet为64kb）为单位来做校验)
+
+4、客户端以packet为单位接收，先在本地缓存，然后写入目标文件
+
+![img](https://segmentfault.com/img/remote/1460000013767517?w=999&h=709)
+
+
+
+### 网络拓扑
+
+![image-20211006113631777](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211006113631777.png)
+
+### 机架感知
+
+1、第一个副本在client所处的节点上。如果客户端在集群外，随机选一个。
+
+2、第二个副本和第一个副本位于相同机架，随机节点。
+
+3、第三个副本位于不同机架，随机节点。
+
+![image-20211006113741887](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211006113741887.png)
