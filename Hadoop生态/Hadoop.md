@@ -355,7 +355,7 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 7、当一个block传输完成之后，Client再次请求NameNode上传第二个block的服务器.
 
-![img](https://img2018.cnblogs.com/blog/699090/201906/699090-20190626155745864-1227676006.png)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/699090-20190626155745864-1227676006.png?token=AL2KPOIQOU3USHPWPEXLMNLBMLPRK)
 
 ### HDFS读流程
 
@@ -367,13 +367,13 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 4、客户端以packet为单位接收，先在本地缓存，然后写入目标文件
 
-![img](https://segmentfault.com/img/remote/1460000013767517?w=999&h=709)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/1460000013767517?token=AL2KPOJENLAIRGLPAK3QJJLBMLPRM)
 
 
 
 ### 网络拓扑
 
-![image-20211006113631777](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211006113631777.png)
+![image-20211006113631777](https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211006113631777.png?token=AL2KPOIAP5US3IFEHORLNQ3BMLPQY)
 
 ### 机架感知
 
@@ -383,7 +383,7 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 3、第三个副本位于不同机架，随机节点。
 
-![image-20211006113741887](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211006113741887.png)
+![image-20211006113741887](https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211006113741887.png?token=AL2KPOPQ3XUSJKF4FSIZOXDBMLPQU)
 
 # MapReduce
 
@@ -393,9 +393,9 @@ MapReduce是一种编程模型，用于大规模数据集（大于1TB）的并�
 
 ## 作业运行流程
 
-![img](http://dl.iteye.com/upload/attachment/0066/0128/8aab5880-d171-30f7-91d6-aaacba2d03ce.jpg)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/8aab5880-d171-30f7-91d6-aaacba2d03ce.jpg?token=AL2KPOIKKOI4K6TBYRPNBW3BMLPRE)
 
-![img](http://dl.iteye.com/upload/attachment/0066/0130/e1090dee-ee98-30d1-ad55-2f88f774fa73.jpg)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/e1090dee-ee98-30d1-ad55-2f88f774fa73.jpg?token=AL2KPOL5FAVN3CUAC3BYB5TBMLPQW)
 
 ### Map端流程
 
