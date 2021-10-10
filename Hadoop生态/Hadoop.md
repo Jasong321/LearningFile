@@ -355,7 +355,7 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 7、当一个block传输完成之后，Client再次请求NameNode上传第二个block的服务器.
 
-![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/699090-20190626155745864-1227676006.png?token=AL2KPOIQOU3USHPWPEXLMNLBMLPRK)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242993.png)
 
 ### HDFS读流程
 
@@ -367,13 +367,13 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 4、客户端以packet为单位接收，先在本地缓存，然后写入目标文件
 
-![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/1460000013767517?token=AL2KPOJENLAIRGLPAK3QJJLBMLPRM)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242646.png)
 
 
 
 ### 网络拓扑
 
-![image-20211006113631777](https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211006113631777.png?token=AL2KPOIAP5US3IFEHORLNQ3BMLPQY)
+![image-20211006113631777](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242280.png)
 
 ### 机架感知
 
@@ -383,7 +383,7 @@ chunk是最小的单位，它是client向DataNode，或DataNode的PipLine之间�
 
 3、第三个副本位于不同机架，随机节点。
 
-![image-20211006113741887](https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211006113741887.png?token=AL2KPOPQ3XUSJKF4FSIZOXDBMLPQU)
+![image-20211006113741887](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242742.png)
 
 # MapReduce
 
@@ -393,9 +393,9 @@ MapReduce是一种编程模型，用于大规模数据集（大于1TB）的并�
 
 ## 作业运行流程
 
-![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/8aab5880-d171-30f7-91d6-aaacba2d03ce.jpg?token=AL2KPOIKKOI4K6TBYRPNBW3BMLPRE)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242944.jpeg)
 
-![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/e1090dee-ee98-30d1-ad55-2f88f774fa73.jpg?token=AL2KPOL5FAVN3CUAC3BYB5TBMLPQW)
+![img](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102242165.jpeg)
 
 ### Map端流程
 
@@ -441,7 +441,7 @@ MapTask和ReduceTask均会对数据按照key进行排序，该操作属于Hadoop
 
 Map方法之后，Reduce方法之前的数据处理过程称之为Shuffle，目的是对数据进行分区排序。
 
-![image-20211010193624051](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102051542.png?token=AL2KPOMSUISQQSEXONBYPCDBMLRBA)
+![image-20211010193624051](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110102241941.png)
 
 - 数据在Map之后，数据进入环形缓冲区，数据以KEY-VALUE的形式进入缓冲区，进入的同时会获得分区号P（只是获得分区号，并没有完成物理上的分区）。
 - 当环形缓冲区满了，需要写数据到磁盘，先按照P做分区，再用KEY做排序。在落盘前用combiner合并（可选）。
