@@ -439,7 +439,9 @@ MapTask和ReduceTask均会对数据按照key进行排序，该操作属于Hadoop
 
 ### Shuffle
 
+Map方法之后，Reduce方法之前的数据处理过程称之为Shuffle，目的是对数据进行分区排序。
 
+![image-20211010193624051](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211010193624051.png)
 
 ## MapReduce进程
 
