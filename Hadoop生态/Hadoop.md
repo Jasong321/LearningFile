@@ -466,3 +466,215 @@ Map方法之后，Reduce方法之前的数据处理过程称之为Shuffle，目�
 2. MapTask:Map阶段的数据处理流程
 3. ReduceTask:Reduce阶段的数据处理流程
 
+
+
+#  YARN
+
+YARN是一个资源调度平台，负责为运算程序提供服务器运行资源，相当于一个分布式操作系统平台，MapReduce等运算程序则相当于运行于操作系统之上的应用程序。
+
+## YARN基本架构
+
+YARN主要由ResourceManager,NodeManager,ApplicationMaster和Container等组件组成。
+
+**ResourceManager(RM):**
+
+1、处理客户端请求
+
+2、监控NodeManager
+
+3、启动或监控ApplicationMaster
+
+4、资源的分配与调度
+
+**NodeManager(NM):**
+
+1、管理单个节点上的资源
+
+2、处理来自ResourceManager的命令
+
+3、处理来自ApplicationMaster的命令
+
+**ApplicationMaster(AM):**
+
+1、负责数据的切分
+
+2、为应用程序申请资源并分配给内部的任务
+
+3、任务的监控与容错
+
+**Container:**
+
+Yarn中的资源抽象，它封装了某个节点上的多维度资源，如内存、CPU、磁盘、网络等。
+
+![image-20211016160418669](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110161604909.png)
+
+##  YARN工作机制
+
+![image-20211016160458240](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211016160458240.png)
+
+1、MR程序提交到客户端所在的节点
+
+2、YarnRunner向ResourceManager申请一个Appication
+
+3、RM将该应用程序的资源路径返回给YarnRunner
+
+4、该程序将运行所需资源提交到HDFS上
+
+5、程序资源提交完毕后，申请运行MrAppMaster
+
+6、RM将用户的请求初始化成一个Task
+
+7、其中一个NodeManager领取到Task任务
+
+8、该NodeManager创建容器Container，并产生MrAppMaster
+
+9、Container从HDFS上拷贝资源到本地
+
+10、MrAppMaster向RM申请运行MapTask资源
+
+11、RM将运行MapTask任务分配给另外两个NodeManager，另两个NodeManager分别启动MapTask，MapTask对数据分区排序
+
+12、MR向两个接收到任务的NodeManager发送程序启动脚本，这两个NodeManager分别启动MapTask，MapTask对数据分区排序
+
+13、MrAppMaster等待所有MapTask运行完毕后，向RM申请容器，运行ReduceTask
+
+14、ReduceTask向MapTask获取相应分区的数据
+
+15、程序运行完毕后，MR会向RM申请注销自己
+
+###  作业提交全过程
+
+#### 作业提交  
+
+1、Client 调用 job.waitForCompletion 方法，向整个集群提交 MapReduce 作业。
+
+2、Client 向 RM 申请一个作业 id
+
+3、RM 给 Client 返回该 job 资源的提交路径和作业 id。
+
+4、Client 提交 jar 包、切片信息和配置文件到指定的资源提交路径。
+
+5、Client 提交完资源后，向 RM 申请运行 MrAppMaster。
+
+#### 作业初始化
+
+1、当 RM 收到 Client 的请求后，将该 job 添加到容量调度器中。
+
+2、某一个空闲的 NM 领取到该 Job。
+
+3、该 NM 创建 Container，并产生 MRAppmaster。
+
+4、下载 Client 提交的资源到本地。
+
+#### 任务分配
+
+1、MrAppMaster 向 RM 申请运行多个 MapTask 任务资源。
+
+2、RM 将运行 MapTask 任务分配给另外两个 NodeManager，另两个 NodeManager，分别领取任务并创建容器。
+
+#### 任务运行
+
+1、MR向两个接收到任务的NodeManager发送程序启动脚本，这两个NodeManager分别启动MapTask，MapTask对数据进行分区排序。
+
+2、MrAppMaster等待所有MapTask运行完毕后，向RM申请容器，运行ReduceTask。
+
+3、ReduceTask向MapTask获取相应分区的数据
+
+4、程序运行完毕后，MR 会向 RM 申请注销自己。
+
+#### 进度和状态更新
+
+YARN 中的任务将其进度和状态(包括 counter)返回给应用管理器, 客户端每秒(通过
+mapreduce.client.progressmonitor.pollinterval 设置)向应用管理器请求进度更新, 展示给用户。
+
+#### 作业完成
+
+除了向应用管理器请求作业进度外, 客户端每 5 秒都会通过调用waitForCompletion()来检查作业是否完成。时间间隔可以通过 mapreduce.client.completion.pollinterval 来设置。作业完成之后, 应用管理器和 Container 会清理工作状态 。作业的信息会被作业历史服务器存储以备之后用户核查。
+
+![image-20211016214102722](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110162142227.png)
+
+##  资源调度器
+
+1、FIFO调度器
+
+2、容量调度器
+
+3、公平调度器
+
+
+
+## Hadoop企业优化
+
+###  MapReduce跑得慢的原因
+
+1、计算机性能：CPU、内存、磁盘健康、网络
+
+2、I/O操作优化
+
+1. 数据倾斜
+2. Map和Reduce数设置不合理
+3. Map运行时间太长，导致Reduce等待过久
+4. 小文件过多
+5. 大量的不可分块的超大文件
+6. spill次数过多
+7. Merge次数过多
+
+###  MapReduce优化方法
+
+MapReduce 优化方法主要从六个方面考虑：数据输入、Map 阶段、Reduce 阶段、IO 传输、数据倾斜问题和常用的调优参数。
+
+#### 数据输入
+
+1、合并小文件：在执 行MR任 务前将小文件进行合并，大量的小文件会
+产生大量的Map任务，增大Map任务装载次数，而任务的装载比较耗时，从而
+导致MR运行较慢。
+
+2、采用CombineTextInputFormat来作为输入，解决输入端大量小文件场景。
+
+#### Map阶段
+
+1、减 少溢写（Spill）次数：通过调整io.sort.mb及sort.spill.percent参 数
+值，增大触发Spill的内存上限，减少Spill次数，从而减少磁盘IO。
+
+2、减少合并（Merge）次数：通过调整io.sort.factor参数，增大Merge的
+文件数目，减少Merge的次数，从而缩短MR处理时间。
+
+3、在Map之后，不影响业务逻辑前提下，先进行Combine处理，减少 I/O。
+
+#### Reduce阶段
+
+1、合理设置Map和Reduce数：两个都不能设置太少，也不能设置太多。
+太少，会导致Task等待，延长处理时间；太多，会导致Map、Reduce任务间竞
+争资源，造成处理超时等错误。
+
+2、设置Map、Reduce共存：调整slowstart.completedmaps参数，使Map运
+行到一定程度后，Reduce也开始运行，减少Reduce的等待时间。
+
+3、规避使用Reduce：因为Reduce在用于连接数据集的时候将会产生大量
+的网络消耗。
+
+4、合理设置Reduce端的Buffer：默认情况下，数据达到一个阈值的时候，
+Buffer中的数据就会写入磁盘，然后Reduce会从磁盘中获得所有的数据。也就是
+说，Buffer和Reduce是没有直接关联的，中间多次写磁盘->读磁盘的过程，既然
+有这个弊端，那么就可以通过参数来配置，使得Buffer中的一部分数据可以直接
+输送到Reduce，从而减少IO开销：mapreduce.reduce.input.buffer.percent，默认为0.0。当值大于0的时候，会保留指定比例的内存读Buffer中的数据直接拿给
+Reduce使用。这样一来，设置Buffer需要内存，读取数据需要内存，Reduce计算
+也要内存，所以要根据作业的运行情况进行调整。
+
+#### I/O传输
+
+1、采用数据压缩的方式，减少网络IO的的时间。安装Snappy和LZO压缩编
+码器。
+
+2、使用SequenceFile二进制文件。
+
+#### 数据倾斜
+
+1、抽样和范围分区：可以通过对原始数据进行抽样得到的结果集来预设分区边界值。
+
+2、自定义分区：基于输出键的背景知识进行自定义分区。例如，如果Map输出键的单词来源于一本书。且其中某几个专业词汇较多。那么就可以自定义分区将这这些专业词汇发送给固定的一部分Reduce实例。而将其他的都发送给剩余的Reduce实例。
+
+3、Combine：使用Combine可以大量地减小数据倾斜。在可能的情况下，Combine的目的就是聚合并精简数据。
+
+4、采用Map Join，尽量避免Reduce Join
+
