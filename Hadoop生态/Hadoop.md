@@ -510,7 +510,7 @@ Yarn中的资源抽象，它封装了某个节点上的多维度资源，如内�
 
 ##  YARN工作机制
 
-![image-20211016160458240](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211016160458240.png)
+![image-20211016160458240](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110171022368.png)
 
 1、MR程序提交到客户端所在的节点
 
