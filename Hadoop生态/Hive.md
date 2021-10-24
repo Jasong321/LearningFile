@@ -38,7 +38,7 @@ Hive是由Facebook开源用于解决海量结构化日志的数据统计。
 
 ## Hive架构
 
-![image-20211019211919283](C:\Users\JasonG\AppData\Roaming\Typora\typora-user-images\image-20211019211919283.png)
+![image-20211019211919283](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110241734482.png)
 
 1、用户接口：Client
 
