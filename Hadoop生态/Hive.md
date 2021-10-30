@@ -485,3 +485,412 @@ from
 
 ```
 
+
+
+## Hadoop压缩配置
+
+### 开启Map输出阶段压缩
+
+开启 map 输出阶段压缩可以减少 job 中 map 和 Reduce task 间数据传输量。具体配置如下：
+
+1、开启 hive 中间传输数据压缩功能
+
+```sql
+set hive.exec.compress.intermediate=true;
+```
+
+2、开启 mapreduce 中 map 输出压缩功能
+
+```sql
+set mapreduce.map.output.compress=true;
+```
+
+3、设置 mapreduce 中 map 输出数据的压缩方式
+
+```sql
+set mapreduce.map.output.compress.codec=
+org.apache.hadoop.io.compress.SnappyCodec;
+```
+
+### 开启Reduce输出阶段压缩
+
+当 Hive 将 输 出 写 入 到 表 中 时 ， 输 出 内 容 同 样 可 以 进 行 压 缩 。 属 性
+hive.exec.compress.output 控制着这个功能。用户可能需要保持默认设置文件中的默认值 false，这样默认的输出就是非压缩的纯文本文件了。用户可以通过在查询语句或执行脚本中设置这个值为 true，来开启输出结果压缩功能。
+
+1、开启hive最终输出数据压缩功能
+
+``` sql
+set hive.exec.compress.output=true;
+```
+
+2、开启 mapreduce 最终输出数据压缩
+
+```sql
+set mapreduce.output.fileoutputformat.compress=true;
+```
+
+3、设置 mapreduce 最终数据输出压缩方式
+
+```sql
+set mapreduce.output.fileoutputformat.compress.codec =
+org.apache.hadoop.io.compress.SnappyCodec;
+```
+
+4、设置 mapreduce 最终数据输出压缩为块压缩
+
+```sql
+set mapreduce.output.fileoutputformat.compress.type=BLOCK;
+```
+
+
+
+## 文件存储格式
+
+Hive 支持的存储数据的格式主要有：TEXTFILE 、SEQUENCEFILE、ORC、PARQUET。
+
+### 列式存储和行式存储
+
+#### 行存储的特点
+
+查询满足条件的一整行数据的时候，列存储则需要去每个聚集的字段找到对应的每个列的值，行存储只需要找到其中一个值，其余的值都在相邻地方，所以此时行存储查询的速度更快。
+
+#### 列存储的特点
+
+因为每个字段的数据聚集存储，在查询只需要少数几个字段的时候，能大大减少读取的数据量；每个字段的数据类型一定是相同的，列式存储可以针对性的设计更好的设计压缩算法。
+
+<font color=red>TEXTFILE 和 SEQUENCEFILE 的存储格式都是基于行存储的；</font>
+
+<font color=red>ORC 和 PARQUET 是基于列式存储的。</font>
+
+### TextFile格式
+
+默认格式，数据不做压缩，磁盘开销大，数据解析开销大。可结合 Gzip、Bzip2 使
+用，但使用 Gzip 这种方式，hive 不会对数据进行切分，从而无法对数据进行并行操作。
+
+### Orc格式
+
+Orc (Optimized Row Columnar)是 Hive 0.11 版里引入的新的存储格式。
+
+每个 Orc 文件由 1 个或多个 stripe 组成，每个 stripe 一般为HDFS 的块大小，每一个 stripe 包含多条记录，这些记录按照列进行独立存储，对应到Parquet 中的 row group 的概念。每个 Stripe 里有三部分组成，分别是 Index Data，Row 
+Data，Stripe Footer：
+
+![image-20211024200549425](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110242005356.png)
+
+1. Index Data：一个轻量级的 index，默认是每隔 1W 行做一个索引。这里做的索引应该只是记录某行的各字段在 Row Data 中的 offset。
+2. Row Data：存的是具体的数据，先取部分行，然后对这些行按列进行存储。对每个列进行了编码，分成多个 Stream 来存储。
+3. Stripe Footer：存的是各个 Stream 的类型，长度等信息。每个文件有一个 File Footer，这里面存的是每个 Stripe 的行数，每个 Column 的数据类
+   型信息等；每个文件的尾部是一个 PostScript，这里面记录了整个文件的压缩类型以及FileFooter 的长度信息等。在读取文件时，会 seek 到文件尾部读 PostScript，从里面解析到File Footer 长度，再读 FileFooter，从里面解析到各个 Stripe 信息，再读各个 Stripe，即从后往前读。
+
+### Parquet格式
+
+Parquet 文件是以二进制方式存储的，所以是不可以直接读取的，文件中包括该文件的数据和元数据，<font color=red>因此 Parquet 格式文件是自解析的</font>。
+
+1. 行组(Row Group)：每一个行组包含一定的行数，在一个 HDFS 文件中至少存储一个行组，类似于 orc 的 stripe 的概念。
+2. 列块(Column Chunk)：在一个行组中每一列保存在一个列块中，行组中的所有列连续的存储在这个行组文件中。一个列块中的值都是相同类型的，不同的列块可能使用不同的算法进行压缩。
+3. 页(Page)：每一个列块划分为多个页，一个页是最小的编码的单位，在同一个列块的不同页可能使用不同的编码方式。
+
+通常情况下，在存储 Parquet 数据的时候会按照 Block 大小设置行组的大小，由于一般情况下每一个 Mapper 任务处理数据的最小单位是一个 Block，这样可以把每一个行组由一个 Mapper 任务处理，增大任务执行并行度。Parquet 文件的格式如图 6-12 所示。
+
+![image-20211024231433214](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110242314598.png)
+
+在实际的项目开发当中，hive 表的数据存储格式一般选择：orc 或 parquet。压缩方式一般选择 snappy，lzo。
+
+
+
+## 表的优化
+
+### 小表、大表Join
+
+将 key 相对分散，并且数据量小的表放在 join 的左边，这样可以有效减少内存溢出错误发生的几率；再进一步，可以使用 map join 让小的维度表（1000 条以下的记录条数）先进内存。在 map 端完成 reduce。
+实际测试发现：新版的 hive 已经对小表 JOIN 大表和大表 JOIN 小表进行了优化。小表放在左边和右边已经没有明显区别。
+
+### 大表Join大表
+
+#### 空KEY过滤
+
+有时 join 超时是因为某些 key 对应的数据太多，而相同 key 对应的数据都会发送到相同的 reducer 上，从而导致内存不够。此时我们应该仔细分析这些异常的 key，很多情况下，这些 key 对应的数据是异常数据，我们需要在 SQL 语句中进行过滤。例如 key 对应的字段为空，操作如下：
+
+```sql
+insert overwrite table jointable select n.* from (select * from
+nullidtable where id is not null ) n left join ori o on n.id = o.id;
+
+```
+
+#### 空KEY转换
+
+有时虽然某个 key 为空对应的数据很多，但是相应的数据不是异常数据，必须要包含在join 的结果中，此时我们可以表 a 中 key 为空的字段赋一个随机的值，使得数据随机均匀地分不到不同的 reducer 上。例如：
+
+```sql
+insert overwrite table jointable
+select n.* from nullidtable n full join ori o on 
+case when n.id is null then concat('hive', rand()) else n.id end = o.id;
+```
+
+#### MapJoin（小表Join大表）
+
+如果不指定 MapJoin 或者不符合 MapJoin 的条件，那么 Hive 解析器会将 Join 操作转换成 Common Join，即：在 Reduce 阶段完成 join。容易发生数据倾斜。可以用 MapJoin 把小表全部加载到内存在 map 端进行 join，避免 reducer 处理。
+
+##### 开启MapJoin参数设置
+
+1、设置自动选择MapJoin
+
+```sql
+set hive.auto.convert.join = true; 默认为 true
+```
+
+2、大表小表的阈值设置（默认25M以下认为是小表）
+
+```sql
+set hive.mapjoin.smalltable.filesize=25000000;
+```
+
+![image-20211025231944924](https://raw.githubusercontent.com/Jasong321/PicBed/master/202110252320905.png)
+
+### Group By
+
+数据量小的时候无所谓，数据量大的情况下，由于 COUNT DISTINCT 的全聚合操作，即使设定了 reduce task 个数，set mapred.reduce.tasks=100；hive 也只会启动一个 reducer。，这就造成一个 Reduce 处理的数据量太大，导致整个 Job 很难完成，一般 COUNT DISTINCT使用先 GROUP BY 再 COUNT 的方式替换。
+
+### 笛卡尔积
+
+尽量避免笛卡尔积，join 的时候不加 on 条件，或者无效的 on 条件，Hive 只能使用 1 个reducer 来完成笛卡尔积。
+
+### 行列过滤
+
+列处理：在 SELECT 中，只拿需要的列，如果有，尽量使用分区过滤，少用 SELECT *。
+
+行处理：在分区剪裁中，当使用外关联时，如果将副表的过滤条件写在 Where 后面，那么就会先全表关联，之后再过滤。
+
+### 动态分区调整
+
+关系型数据库中，对分区表 Insert 数据时候，数据库自动会根据分区字段的值，将数据插入到相应的分区中，Hive 中也提供了类似的机制，即动态分区(Dynamic Partition)，只不过，使用 Hive 的动态分区，需要进行相应的配置。
+
+#### 开启动态分区参数设置
+
+1、开启动态分区功能
+
+```sql
+hive.exec.dynamic.partition=true
+```
+
+2、设置为非严格模式（动态分区的模式，默认 strict，表示必须指定至少一个分区为静态分区，nonstrict 模式表示允许所有的分区字段都可以使用动态分区。）
+
+```sql
+hive.exec.dynamic.partition.mode=nonstrict
+```
+
+3、在所有执行 MR 的节点上，最大一共可以创建多少个动态分区。默认 1000
+
+```sql
+hive.exec.max.dynamic.partitions=1000
+```
+
+4、在每个执行 MR 的节点上，最大可以创建多少个动态分区。该参数需要根据实际的数据来设定。比如：源数据中包含了一年的数据，即 day 字段有 365 个值，那么该参数就需要设置成大于 365，如果使用默认值 100，则会报错。
+
+```sql
+hive.exec.max.dynamic.partitions.pernode=365
+```
+
+5、整个 MR Job 中，最大可以创建多少个 HDFS 文件。默认 100000
+
+```sql
+hive.exec.max.created.files=100000
+```
+
+6、当有空分区生成时，是否抛出异常。一般不需要设置。默认 false
+
+```sql
+hive.error.on.empty.partition=false
+```
+
+
+
+## 数据倾斜
+
+ ### 合理设置Map数
+
+1、通常情况下，作业会通过 input 的目录产生一个或者多个 map 任务。
+
+主要的决定因素有：input 的文件总个数，input 的文件大小，集群设置的文件块大小。
+
+2、是不是 map 数越多越好？
+
+答案是否定的。如果一个任务有很多小文件（远远小于块大小 128m），则每个小文件也会被当做一个块，用一个 map 任务来完成，而一个 map 任务启动和初始化的时间远远大于逻辑处理的时间，就会造成很大的资源浪费。而且，同时可执行的 map 数是受限的。
+
+3、是不是保证每个 map 处理接近 128m 的文件块，就高枕无忧了？
+
+答案也是不一定。比如有一个 127m 的文件，正常会用一个 map 去完成，但这个文件只有一个或者两个小字段，却有几千万的记录，如果 map 处理的逻辑比较复杂，用一个map 任务去做，肯定也比较耗时。
+
+针对上面的问题 2 和 3，我们需要采取两种方式来解决：即减少 map 数和增加 map数。
+
+
+
+### 小文件进行合并
+
+在 map 执行前合并小文件，减少 map 数：CombineHiveInputFormat 具有对小文件进行合并的功能（系统默认的格式）。HiveInputFormat 没有对小文件合并功能。
+
+```sql
+set hive.input.format= org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;
+```
+
+
+
+### 复杂文件增加Map数
+
+当 input 的文件都很大，任务逻辑复杂，map 执行非常慢的时候，可以考虑增加 Map数，来使得每个 map 处理的数据量减少，从而提高任务的执行效率。
+
+增加 map 的方法为：根据
+computeSliteSize(Math.max(minSize,Math.min(maxSize,blocksize)))=blocksize=128M 公式，调整 maxSize 最大值。让 maxSize 最大值低于 blocksize 就可以增加 map 的个数。
+
+```sql
+set mapreduce.input.fileinputformat.split.maxsize=100;
+```
+
+### 合理设置Reduce数
+
+1、每个 Reduce 处理的数据量默认是 256MB
+
+```sql
+hive.exec.reducers.bytes.per.reducer=256000000
+```
+
+2、每个任务最大的 reduce 数，默认为 1009
+
+```sql
+hive.exec.reducers.max=1009
+```
+
+3、在hadoop 的 mapred-default.xml 文件中修改
+
+```sql
+set mapreduce.job.reduces = 15;
+```
+
+
+
+reduce 个数并不是越多越好。
+
+1、过多的启动和初始化 reduce 也会消耗时间和资源；
+
+2、另外，有多少个 reduce，就会有多少个输出文件，如果生成了很多个小文件，那么如果这些小文件作为下一个任务的输入，则也会出现小文件过多的问题；
+
+
+
+## 并行执行
+
+Hive 会将一个查询转化成一个或者多个阶段。这样的阶段可以是 MapReduce 阶段、抽样阶段、合并阶段、limit 阶段。或者 Hive 执行过程中可能需要的其他阶段。默认情况下，Hive 一次只会执行一个阶段。不过，某个特定的 job 可能包含众多的阶段，而这些阶段可能并非完全互相依赖的，也就是说有些阶段是可以并行执行的，这样可能使得整个 job 的执行时间缩短。不过，如果有更多的阶段可以并行执行，那么 job 可能就越快完成。
+
+通过设置参数 hive.exec.parallel 值为 true，就可以开启并发执行。不过，在共享集群中，需要注意下，如果 job 中并行阶段增多，那么集群利用率就会增加。
+
+```sql
+set hive.exec.parallel=true;
+set hive.exec.parallel.thread.number=16; 
+```
+
+
+
+## 严格模式
+
+Hive 提供了一个严格模式，可以防止用户执行那些可能意想不到的不好的影响的查询。
+
+通过设置属性 hive.mapred.mode 值为默认是非严格模式 nonstrict 。开启严格模式需要、修改 hive.mapred.mode 值为 strict，开启严格模式可以禁止 3 种类型的查询。
+
+```xml
+<property>
+ 
+<name>hive.mapred.mode</name>
+ 
+<value>strict</value>
+ 
+<description>
+ 
+The mode in which the Hive operations are being performed. 
+ 
+In strict mode, some risky queries are not allowed to run. They include:
+ 
+Cartesian Product.
+ 
+No partition being picked up for a query.
+ 
+Comparing bigints and strings.
+ 
+Comparing bigints and doubles.
+ 
+Orderby without limit.
+</description>
+</property>
+
+```
+
+1、对于分区表，除非 where 语句中含有分区字段过滤条件来限制范围，否则不允许执行。换句话说，就是用户不允许扫描所有分区。进行这个限制的原因是，通常分区表都拥有非常大的数据集，而且数据增加迅速。没有进行分区限制的查询可能会消耗令人不可接受的巨大资源来处理这个表。
+
+2、对于使用了 order by 语句的查询，要求必须使用 limit 语句。因为 order by 为了执行排序过程会将所有的结果数据分发到同一个 Reducer 中进行处理，强制要求用户增加这个LIMIT 语句可以防止 Reducer 额外执行很长一段时间。
+
+3、限制笛卡尔积的查询。对关系型数据库非常了解的用户可能期望在执行 JOIN 查询的时候不使用 ON 语句而是使用 where 语句，这样关系数据库的执行优化器就可以高效地将WHERE 语句转化成那个 ON 语句。不幸的是，Hive 并不会执行这种优化，因此，如果表足够大，那么这个查询就会出现不可控的情况。
+
+## JVM重用
+
+JVM 重用是 Hadoop 调优参数的内容，其对 Hive 的性能具有非常大的影响，特别是对于很难避免小文件的场景或 task 特别多的场景，这类场景大多数执行时间都很短。Hadoop 的默认配置通常是使用派生 JVM 来执行 map 和 Reduce 任务的。这时 JVM 的
+启动过程可能会造成相当大的开销，尤其是执行的 job 包含有成百上千 task 任务的情况。
+JVM重用可以使得JVM实例在同一个 job 中重新使用N次。N的值可以在Hadoop的 mapred-site.xml 文件中进行配置。通常在 10-20 之间，具体多少需要根据具体业务场景测试得出。
+
+```xml
+<property>
+ 
+<name>mapreduce.job.jvm.numtasks</name>
+ 
+<value>10</value>
+ 
+<description>How many tasks to run per jvm. If set to -1, there is
+no limit. 
+ 
+</description>
+</property>
+
+```
+
+这个功能的缺点是，开启 JVM 重用将一直占用使用到的 task 插槽，以便进行重用，直到任务完成后才能释放。如果某个“不平衡的”job 中有某几个 reduce task 执行的时间要比其他 Reduce task 消耗的时间多的多的话，那么保留的插槽就会一直空闲着却无法被其他的 job使用，直到所有的 task 都结束了才会释放。
+
+
+
+## 推测执行
+
+在分布式集群环境下，因为程序 Bug（包括 Hadoop 本身的 bug），负载不均衡或者资源分布不均等原因，会造成同一个作业的多个任务之间运行速度不一致，有些任务的运行速度可能明显慢于其他任务（比如一个作业的某个任务进度只有 50%，而其他所有任务已经运行完毕），则这些任务会拖慢作业的整体执行进度。为了避免这种情况发生，Hadoop 采用了推测执行（Speculative Execution）机制，它根据一定的法则推测出“拖后腿”的任务，并为这样的任务启动一个备份任务，让该任务与原始任务同时处理同一份数据，并最终选用最先成功运行完成任务的计算结果作为最终结果。
+
+设置开启推测执行参数：Hadoop 的 mapred-site.xml 文件中进行配置，默认是 true
+
+```xml
+<property>
+ 
+<name>mapreduce.map.speculative</name>
+ 
+<value>true</value>
+ 
+<description>If true, then multiple instances of some map tasks 
+ 
+may be executed in parallel.</description>
+</property>
+<property>
+ 
+<name>mapreduce.reduce.speculative</name>
+ 
+<value>true</value>
+ 
+<description>If true, then multiple instances of some reduce tasks 
+ 
+may be executed in parallel.</description>
+</property>
+```
+
+不过 hive 本身也提供了配置项来控制 reduce-side 的推测执行：默认是 true
+
+```xml
+<property> 
+<name>hive.mapred.reduce.tasks.speculative.execution</name>
+    <value>true</value>
+ 
+<description>Whether speculative execution for reducers should be turned on. 
+</description>
+</property>
+
+```
+
