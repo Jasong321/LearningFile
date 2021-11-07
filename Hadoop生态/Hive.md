@@ -706,6 +706,96 @@ hive.error.on.empty.partition=false
 
 ## 数据倾斜
 
+### MAPJOIN
+
+在小表Join大表的情况，巧用MapJoin可以有效解决数据倾斜的问题。
+
+1、HIVE0.11前，必须使用MAPJOIN来标记显示地启动该优化操作，由于其需要将小表加载进内存所以要注意小表的大小
+
+```sql
+SELECT/*+ MAPJOIN(smalltable)*/.key,valueFROMsmalltableJOINbigtableONsmalltable.key=bigtable.key
+```
+
+2、在Hive0.11后，Hive默认启动该优化，也就是不在需要显示的使用MAPJOIN标记，其会在必要的时候触发该优化操作将普通JOIN转换成MapJoin，可以通过以下两个属性来设置该优化的触发时机
+
+```sql
+hive.auto.convert.join=true
+# 通过配置该属性来确定使用该优化的表的大小，如果表的大小小于此值就会被加载进内存中
+hive.mapjoin.smalltable.filesize=2500000
+```
+
+### NULL值处理
+
+大表与大表Join时，当其中一张表的NULL值（或其他值）比较多时，容易导致这些相同值在reduce阶段集中在某一个或几个reduce上，发生数据倾斜问题。
+
+优化方法：
+
+1、将NULL值提取出来最后合并，这一部分只有map操作；非NULL值的数据分散到不同reduce上，不会出现某个reduce任务数据加工时间过长的情况，整体效率提升明显。这种方法由于有两次Table Scan会导致map增多。
+
+```sql
+ SELECT a.user_Id,a.username,b.customer_id
+  FROM user_info a
+  LEFT JOIN customer_info b
+  ON a.user_id = b.user_id
+  where a.user_id IS NOT NULL
+  
+  UNION ALL
+  SELECT a.user_Id,a.username,NULL
+  FROM user_info a
+  WHERE a.user_id IS NULL
+```
+
+2、 在Join时直接把NULL值打散成随机值来作为reduce的key值，不会出现某个reduce任务数据加工时间过长的情况，整体效率提升明显。这种方法解释计划只有一次map，效率一般优于第一种方法。
+
+```sql
+SELECT a.user_id,a.username,b.customer_id
+FROM user_info a
+LEFT JOIN customer_info b
+ON
+CASE WHEN
+a.user_id IS NULL
+THEN
+CONCAT ('dp_hive', RAND())
+ELSE
+a.user_id
+END = b.user_id;
+```
+
+
+
+### Group By操作
+
+Hive做group by查询，当遇到group by字段的某些值特别多的时候，会将相同值拉到同一个reduce任务进行聚合，也容易发生数据倾斜。
+
+优化方法
+
+1、开启Map端聚合
+
+|              参数名称              | 默认值 |            说明             |
+| :--------------------------------: | :----: | :-------------------------: |
+|           hive.map.aggr            |  true  |      是否开启Map端聚合      |
+| hive.groupby.mapaggr.checkinterval | 100000 | 在Map端进行聚合操作的条目数 |
+
+2、有数据倾斜时进行负载均衡
+
+|        参数名称        | 默认值 |                  说明                   |
+| :--------------------: | :----: | :-------------------------------------: |
+| hive.groupy.skewindata | false  | 当group by 有数据倾斜时是否进行负载均衡 |
+
+当设定hive.groupby.skewindata为true时，生成的查询计划会有两个MapReduce任务。在第一个MapReduce 中，map的输出结果集合会随机分布到 reduce 中， 每个 reduce 做部分聚合操作，这样处理之后，相同的 Group By Key 有可能分发到不同的 reduce 中，从而达到负载均衡的目的。在第二个 MapReduce 任务再根据第一步中处理的数据按照Group By Key分布到reduce中，（这一步中相同的key在同一个reduce中），最终生成聚合操作结果。
+
+### COUNT(DISTINCT) 操作
+
+当在数据量比较大的情况下，由于COUNT DISTINCT操作是用一个reduce任务来完成，这一个reduce需要处理的数据量太大，就会导致整个job很难完成，这也可以归纳为一种数据倾斜。
+
+优化方法：将COUNT DISTINCT使用先GROUP BY再COUNT的方式替换。例如：
+
+```sql
+select count(id) from (select id from bigtable group by id) a
+```
+
+
+
  ### 合理设置Map数
 
 1、通常情况下，作业会通过 input 的目录产生一个或者多个 map 任务。
@@ -745,6 +835,25 @@ computeSliteSize(Math.max(minSize,Math.min(maxSize,blocksize)))=blocksize=128M �
 set mapreduce.input.fileinputformat.split.maxsize=100;
 ```
 
+
+
+```sql
+# mapred切分的大小
+set mapred.max.split.size=256000000 ;
+# 低于128M就算小文件，数据在一个节点会合并，在多个不同的节点会把数据抓过来进行合并。
+set mapred.min.split.size.per.node=128000000;
+# 低于128M就算小文件，数据在一个机架会合并，在多个不同的节点会把数据抓过来进行合并。
+set mapred.min.split.size.per.rack=128000000;
+
+# 设置合并器本身
+set hive.merge.mapFiles=true;
+set hive.merge.mapredFiles=true;
+# 执行前进行小文件合并  
+set hive.input.format=org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;
+```
+
+
+
 ### 合理设置Reduce数
 
 1、每个 Reduce 处理的数据量默认是 256MB
@@ -753,13 +862,21 @@ set mapreduce.input.fileinputformat.split.maxsize=100;
 hive.exec.reducers.bytes.per.reducer=256000000
 ```
 
-2、每个任务最大的 reduce 数，默认为 1009
+2、每个任务最大的 reduce 数，默认为 999
 
 ```sql
 hive.exec.reducers.max=1009
 ```
 
-3、在hadoop 的 mapred-default.xml 文件中修改
+3、设置reducetask数量
+
+```sql
+set mapred.reduce.tasks = 15;
+```
+
+
+
+4、在hadoop 的 mapred-default.xml 文件中修改
 
 ```sql
 set mapreduce.job.reduces = 15;

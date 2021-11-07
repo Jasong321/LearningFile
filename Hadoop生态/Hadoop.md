@@ -98,17 +98,37 @@ NameNode启动：
 
 8、namenode将fsimage.chkpoint重新命名成fsimage
 
+编辑日志合并到文件系统镜像：
+
+编辑日志不会是无限的增长的，集群中的SecondaryNameNode会定期为namenode内存中的文件系统元数据创建系统镜像，具体的创建过程参照下图。
+
+![img](https://upload-images.jianshu.io/upload_images/5700489-c192010b2648dfe4.png?imageMogr2/auto-orient/strip|imageView2/2/w/1200/format/webp)
+
+1. SecondaryNameNode请求NameNode停止使用当前打开的edits文件（即edits_inprogress_000xxx文件），并重新打开一个新的编辑日志文件以记录新的操作。
+
+2. SecondaryNameNode从NameNode中获取最近的fsimage和edits文件，使用HTTP GET方式获取。
+
+3. SecondaryNameNode将fsimage载入内存，然后逐一执行edits文件中记录的操作，然后创建一个新的镜像文件。
+
+4. SecondaryNameNode将合并后的镜像文件发送到NameNode（HTTP PUT）,NameNode将其保存为一个临时文件。
+
+5. NameNode重新命名该临时的镜像文件，此为最新的镜像文件。
+
+edits日志文件合并的触发条件受两个配置项的控制，dfs.namenode.checkpoint.period（单位为秒），这个配置项是从时间维度上的控制，默认情况下是每隔1个小时触发一次合并。 第二个配置项是dfs.namenode.checkpoint.txns，这个配置是从编辑日志大大小维度上进行控制的，默认是如果从上一个检查点开始编辑日志已经达到了100万个事务就合并。检查编辑日志大小的频率默认是1分钟检查一次，可由dfs.namenode.checkpoint.check.period（单位为秒）配置项来改变。
+
 #### Fsimage和Edits解析
 
 namenode被格式化之后，将在/opt/module/hadoop-2.7.2/data/tmp/dfs/name/current目录中产生如下文件
 
->fsimage_0000000000000000000
+>edits_0000xxxx -> 编辑日志文件
 >
->fsimage_0000000000000000000.md5
+>edits_inprogress_000xxx -> 当前打开可写的编辑日志
 >
->seen_txid
+>fsimage_000xxx -> 文件系统镜像文件
 >
->VERSION
+>VERSION -> HDFS版本信息的描述文件
+>
+>in_use.lock -> 一个锁文件，namenode使用该文件为存储目录枷锁，避免其它namenode实例同时使用同一个存储目录的情况。
 
 1、Fsimage文件：HDFS文件系统元数据的一个永久性的检查点，其中包含HDFS文件系统的所有目录和文件idnode的序列化信息。
 
