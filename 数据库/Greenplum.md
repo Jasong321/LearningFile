@@ -8,7 +8,7 @@ Greenplum是基于Postgres的开源分布式数据库，从拓扑结构上看，
 
 下图中的每个方框就是一个物理机器，**为了能获取物理机器最好的性能，一个节点可以灵活部署多个Segment进程**。在查询过程中，当Master节点接收到用户发起的查询语句时，会进行查询编译、查询优化等操作，生成并行查询计划，并分发到Segment节点执行。Segment执行完毕，会将数据发回Master节点，最终呈现给用户。
 
-<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGEpQmvkRNy9pkR1K3v0Xsa0IJ0RhQ9TGicXKm31O6Qvbdf3KONw728Tg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片" style="zoom: 200%;" />
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGEpQmvkRNy9pkR1K3v0Xsa0IJ0RhQ9TGicXKm31O6Qvbdf3KONw728Tg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 **了解了Greenplum的架构，我们再来看看在Greenplum上,数据是如何存储的**。在Greenplum上，每个物理机器上会对应多个磁盘，每个磁盘上会挂载物理磁盘，每个磁盘上会存有多个数据分片。Greenplum上数据的组织会采取如下策略：
 
@@ -41,11 +41,11 @@ Greenplum是基于Postgres的开源分布式数据库，从拓扑结构上看，
 
 教科书里经常会提到存储金字塔。在金字塔分布中，越往上走容量越小，但越来越快，越往下走，容量越大，但越来越慢。内存以上的存储是易失存储，很快但容易丢失数据，这就是易失存储。而非易失存储相对慢，但是不易丢失数据。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG55m6cnxBQkgibWnlEgvOjJbLtc8MawU7TZdL6mpKocSda6TK3tohSXg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG55m6cnxBQkgibWnlEgvOjJbLtc8MawU7TZdL6mpKocSda6TK3tohSXg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 在写程序的时候，我们会通过cache或者buffer来访问文件。 **Greenplum的进程中通过共享缓冲区域来作为中间的内存buffer。**Beckend进程会和中间这一层直接打交道。而共享内存中的buffer会和磁盘文件做交换。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG3B2vXSaG6ibdcStoib5wibicDWiabK44zpRgCduyJTpeXvuJ3xMzicHGYB7A/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG3B2vXSaG6ibdcStoib5wibicDWiabK44zpRgCduyJTpeXvuJ3xMzicHGYB7A/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 那么在共享缓冲区里会发生什么呢？Greenplum是按块来组织数据，图中的虚线方块就是共享内存区。映射表会通过块号去找到共享缓冲块对应的块。如果发现内容是无效的会通过下层的文件操作将数据加载到共享缓冲块中。如果有效，就会直接读取。
 
@@ -63,7 +63,7 @@ Greenplum会将变长数据在每个文件块内从后往前存储，在页头�
 
 现在，对于元组的增删查改都可以支持了，但这远远不够，**为了方便用户的使用和提供更为强大好用的功能，Greenplum提供了执行引擎**。在执行查询时，SQL语句经过解析器，会将字符串的SQL语句解析成结构化的树，通过优化器做出最有效的执行计划，并有执行器执行生成查询结果。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGVh1gYy5qxW32ibWPaAFPsvkwR4RqNR3Pu7yibTKGQibBJljYgpzc3WkicQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGVh1gYy5qxW32ibWPaAFPsvkwR4RqNR3Pu7yibTKGQibBJljYgpzc3WkicQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 下面的例子中的SQL语句对两个表进行了连接操作。**在Greenplum中，执行器是通过迭代器的方式来执行查询计划的，即自顶向下，每次一条元组的方式。**每个执行器节点向上提供下一条元组，向下获取下一条元组。一条语句可能存在多条查询计划，比如前面讲到的顺序扫描和索引扫描，查询优化器会足够聪明选择代价最小的执行计划。在例子中，最下面是对两个表的扫描操作，扫描结束后，为了执行Join，需要将Bars表按照名字进行元组的重分布，让具有连接条件的Bars元组和Sells元组能够汇聚在一起。由于Sells已经按照bar分布，所以这里不需要再对Sells做重分布。最后，做完投影运算后，需要把结果汇聚到QD节点，这是由最顶层的Gather Motion来完成的。
 
@@ -136,19 +136,19 @@ Merge Join 是先将关联表的关联列各自做排序，然后从各自的排
 
 如果Greenplum在修改文件的过程中进程挂了，如何保证数据的一致性呢？数据库课程中经常提到一个经典问题就是：从A账户向B账户转账100，如果A账户减少了100后系统重启崩溃，此时会不会发生A减了100，而B账户没有加100？**Greenplum通过事务来保证操作的原子性。**
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGaTOXickQmAlPNv0HdBeEicjAibSbL3l6gVYpDKc0MoVtAJ3PlxeWUSSEA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGaTOXickQmAlPNv0HdBeEicjAibSbL3l6gVYpDKc0MoVtAJ3PlxeWUSSEA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 另外一个问题是事务间的隔离性问题，一个事务处理转账，另外一个事务给银行账户加息（这里是2%的利息）。如果转账事务和加息事务同时进行，如果按照图中的错误序列进行操作就会出现问题，最后会发现少了2块钱！利用事务的隔离性就可以解决这类头疼的问题。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGREiaf19OmaVrZu758Es1zbia3gdvVzgiaT1fLh8oDp6td4tiaOvibwWicBaQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGREiaf19OmaVrZu758Es1zbia3gdvVzgiaT1fLh8oDp6td4tiaOvibwWicBaQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 每次写数据时，会先改内存，再写磁盘。在下面的例子中，A先在内存中被修改成了23，提交后，如果系统挂了，此时A的修改就丢了，重启时就会发现A依旧等于12，因为修改还没有来得及写回磁盘。当然，要求每次修改都写磁盘可以防止这类问题发生，但是会有效率问题。**Greenplum提供的日志功能就能很好的解决这类问题**。日志详细记录了对于数据库的修改流程。日志记录是按照顺序访问的，并且提供了逻辑时间线的概念，效率相对于磁盘的随机访问会高很多。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG0ATJuiaE1JNTLcibroPgqianEk9SibWys7IP76icz790P2AlfPPFW7sNlMw/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG0ATJuiaE1JNTLcibroPgqianEk9SibWys7IP76icz790P2AlfPPFW7sNlMw/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 前面讲到，Greenplum中，数据是存在多个Segment上的，因此要确保在写入数据时，所有Segments上的数据要么都要写入成功，要么都写入不成功。不能接受的是，部分成功，部分不成功的情况，出现数据的不一致状态。**这里需要提到一个经典的算法：两阶段提交算法。**顾名思义，该算法包含两个阶段，在第一阶段，做prepare，让所有节点投票是否都可以提交，如果所有节点回复为yes时，便会在第二阶段进行提交。否则，只要有一个节点不回复yes，全部节点进行回滚。
 
-![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGhhib3aIZ9wRJbPBaply2rjicybg6arVD8m46MULwsHCCZwtwm1gpPicJw/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+<img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGhhib3aIZ9wRJbPBaply2rjicybg6arVD8m46MULwsHCCZwtwm1gpPicJw/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 下面看看错误处理的情况：
 
@@ -156,11 +156,11 @@ Merge Join 是先将关联表的关联列各自做排序，然后从各自的排
 
 1. 第一种情况是错误发生在第一阶段，有节点不能提交，后续操作只需在第二阶段回滚即可。
 
-   ![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG6Xf3QTDFPCUiblDX473nRRemvghRqRnHQibKibb5PYDqaU4ZsWormSaiaQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+   <img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG6Xf3QTDFPCUiblDX473nRRemvghRqRnHQibKibb5PYDqaU4ZsWormSaiaQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 2. 如果在第一阶段所有节点都回复了Yes，但是第二阶段出现问题，此时DTM管理器就会对失败的节点进行继续提交，直到成功。所有的提交信息都会被DTM存入日志，通过这些信息可以恢复出事务的状态信息，以便找出下一步需要做什么。
 
-   ![图片](https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG3PibLTamRribf6fD1fribyQ9ddPK7uR4LUK6keg4uWWxEWtGtKRxXuDMA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+   <img src="https://mmbiz.qpic.cn/mmbiz_png/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibG3PibLTamRribf6fD1fribyQ9ddPK7uR4LUK6keg4uWWxEWtGtKRxXuDMA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片"  />
 
 # 内核解析
 
@@ -257,7 +257,7 @@ Greenplum中的索引都是二级索引（非聚集索引）
 
 ### 逻辑结构
 
-![image-20211116224540413](https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211116224540413.png)
+<img src="https://raw.githubusercontent.com/Jasong321/PicBed/master/image-20211116224540413.png" alt="image-20211116224540413" style="zoom: 50%;" />
 
 
 
@@ -326,7 +326,7 @@ Greenplum中的索引都是二级索引（非聚集索引）
 
 MVCC最大的特点是读操作不会阻塞写操作，写操作也不会阻塞读操作
 
-![image-20211128110707646](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281132801.png)
+<img src="https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281132801.png" alt="image-20211128110707646" style="zoom:50%;" />
 
 #### Heap表页面布局
 
@@ -376,3 +376,24 @@ Greenplum用快照来判断一个事务是否已经提交
 事务有可能失败，就需要回滚。<font color=red>回滚时Xmax并不做修改</font>。
 
 ![image-20211128180043981](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281800141.png)
+
+有一张pg_clog的表存放事务的状态。
+
+为了提升效率，做了一个优化，用infomask标记事务执行状态。通过这个字段，每个事务生命周期只需要访问一次snapshot和commitlog就可以确定可见性，不再需要重复访问。
+
+![image-20211128181300507](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281813635.png)
+
+Xmax还可以用作行锁的标记
+
+![image-20211128181406620](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281814753.png)
+
+## 清理
+
+在更新元组时会创建一个新的元组，所以旧的元组需要清理。在删除元组时，只会标记Xmax，不会立即删除元组。
+
+### 何时执行清理操作
+
+1、在查询操作访问到某个页面时，会清理这个页面
+
+2、通过vacuum操作来清理
+
