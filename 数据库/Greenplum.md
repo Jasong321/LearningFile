@@ -315,3 +315,20 @@ Greenplum中的索引都是二级索引（非聚集索引）
 | 不可重复读（read-committed） | 否   | 是         | 是   |
 | 可重复读（repeatable-read）  | 否   | 否         | 是   |
 | 串行化（serializable）       | 否   | 否         | 否   |
+
+
+
+### MVCC概念
+
+每个写操作都会创建数据项目的新版本，同时保留旧版本 
+
+这种方法允许Greenplum在读写同时进行的情况下任然能提供高并发特性
+
+MVCC最大的特点是读操作不会阻塞写操作，写操作也不会阻塞读操作
+
+![image-20211128110707646](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281132801.png)
+
+#### Heap表页面布局
+
+![image-20211128114637145](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281146288.png)
+
