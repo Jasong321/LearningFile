@@ -332,3 +332,47 @@ MVCC最大的特点是读操作不会阻塞写操作，写操作也不会阻塞�
 
 ![image-20211128114637145](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281146288.png)
 
+- 数据文件是由很多相同大小(32k)的block组成，block分为两部分，前面是指针信息，后面是元组，中间为空的。指针从前往后增长，元组从后往前增长
+- 指针主要有下面4个信息：
+  - Xmin：创建Tuple的事务ID
+  - Xmax：删除Tuple的事务ID，有时用于行锁
+  - Cid：事务内的查询命令编号，用户跟踪事务内部的可见性
+  - Ctid：指向像一个版本tuple的指针，由两个成员blocknumber:offset做成（用于update）
+
+#### 快照
+
+MVCC的快照用于控制那个元组对于当前查询可见
+
+在Read-Commited的隔离级别，每个查询开始时生成快照。在Repeatable-Read额隔离级别，在每个事务开始时生成快照
+
+快照理论上是一个正在运行的事务列表
+
+Greenplum用快照来判断一个事务是否已经提交
+
+- Xmin：所有小于Xmin的事务都已经提交
+- Running：正在执行的事务列表
+- Xmax：所有大于等于Xmax的事务都未提交
+
+![image-20211128170948629](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281709744.png)
+
+> 可见：元组Xmin<快照Xmin & (元组Xmax>快照Xmax | 元组Xmax为空 | 元组Xmax正在Running)
+
+<img src="https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281723623.png" alt="image-20211128172342489" style="zoom:200%;" />
+
+<img src="https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281725658.png" alt="image-20211128172531528" style="zoom:200%;" />
+
+![image-20211128174801498](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281748603.png)
+
+![image-20211128174447539](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281744677.png)
+
+![image-20211128174651811](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281746919.png)
+
+![image-20211128174933819](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281749936.png)
+
+并发update情况下，等上一个update完成update，再执行下一个。
+
+<img src="https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281757692.png" alt="image-20211128175712569" style="zoom:200%;" />
+
+事务有可能失败，就需要回滚。<font color=red>回滚时Xmax并不做修改</font>。
+
+![image-20211128180043981](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111281800141.png)
