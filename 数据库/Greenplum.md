@@ -397,3 +397,32 @@ Xmax还可以用作行锁的标记
 
 2、通过vacuum操作来清理
 
+![image-20211128231755701](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282317962.png)
+
+## Heap Only Tuple
+
+当频繁的update，索引会大量膨胀，为了解决这个问题引入了Heap Only Tuple(HOT)
+
+Greenplum使用链式更新机制（HOT）来避免插入新的索引项，用旧Tuple的c_tid指向新Tuple
+
+使用HOT机制的条件：更新不涉及索引列，新旧元组在同一个页面内
+
+![image-20211128232631065](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282326164.png)
+
+![image-20211128232746000](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282327122.png)
+
+![image-20211128232845920](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282328033.png)
+
+![image-20211128232959113](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282329224.png)
+
+![image-20211128233044255](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111282330362.png)
+
+HOT链的收尾节点保留，中间的节点都是可以清理的
+
+>清理只发生在对于任何执行中的事务都不可见的tuple上
+>
+>HOT发生在处于单个页面，并有相同的索引值的tuple上
+>
+>多数的清理工作由单页清理操作完成，但是单页清理只涉及Heap Page
+>
+>Vacuum则会进行更加彻底的清理，包括tuple,item,index
