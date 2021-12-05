@@ -426,3 +426,113 @@ HOT链的收尾节点保留，中间的节点都是可以清理的
 >多数的清理工作由单页清理操作完成，但是单页清理只涉及Heap Page
 >
 >Vacuum则会进行更加彻底的清理，包括tuple,item,index
+
+
+
+## 分布式锁和两阶段提交协议
+
+### 事务的属性
+
+数据库用什么办法来实现事务的四大属性？
+
+| 属性         | 含义                                         | 数据库系统的实现              |
+| :----------: | :------------------------------------------: | :---------------------------: |
+| Atomic<br>原子性 | 事务中的操作要么全部正确执行，要么完全不执行 | WAL,分布式事务:两阶段提交协议 |
+| Consistency<br>一致性 | 数据库系统必须保证事务的执行使得数据库从一个一致性状态转移到另一个一致性状态。（满足完整性约束） | 实现对A、I、D三个属性的支持 |
+| Isolation<br>隔离性 | 多个事务并发地执行，对每个事务来说，它并不会感知系统中有其他事务在同时执行 | MVCC、2PL、OCC |
+| Durability | 一个事务在提交之后，该事务对数据库的改变是持久的。 | WAL+存储管理 |
+|              |                                              |                               |
+
+![image-20211129224553636](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111292245837.png)
+
+### 缓冲区管理策略
+
+![image-20211129225748432](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111292257594.png)
+
+1、Force/No-Force
+
+Force：事务提交时，所修改的页面**必须强制**刷回到持久存储中
+
+No-Force：事务提交时，所修改的页面**不需要强制**刷回到持久存储中
+
+2、Steal/No-Steal
+
+Steal：**允许**Buffer Pool里未提交事务所修改的脏页刷回到持久存储
+
+No-Steal：**不允许**Buffer Pool里未提交事务所修改的脏页刷回到持久存储
+
+3、Force策略的问题
+
+对持久存储器进行频繁的随机写操作，性能下降
+
+4、No-Steal策略的问题
+
+不允许未提交事务的脏页换出，系统的并发量不高
+
+5、No-Force/Steal有更好的性能，但是怎么保证事务的原子性和持久性？
+
+- No-Force：事务提交，所修改的数据页没有刷回至持久存储，如果发生断点或者系统崩溃
+- Steal：Buffer Pool中未提交的事务所修改的脏页刷回到持久存储，如果发生断电或者系统崩溃
+
+用日志的方式解决这个问题：
+
+- No-Force -> Redo Log<br>事务提交时，数据页不需要刷回持久存储，为了保证持久性，先把Redo Log写入日志文件。Redo Log记录修改数据对象的新值
+- Steal -> Undo Log<br>允许Buffer Pool未提交事务所修改的脏页刷回到持久存储，为了保证原子性，先把Undo Log写入日志文件。Undo Log记录修改数据对象的旧值
+
+![image-20211129232208618](https://raw.githubusercontent.com/Jasong321/PicBed/master/202111292322793.png)
+
+![image-20211202222325932](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112022223142.png)
+
+通过Log Buffer把原来Buffer Pool的随机写操作变成了顺序写操作（日志满了就写入/事务提交就写入），从而提升了写入的速度。
+
+### Greenplum和PostgreSql采用的策略
+
+1、Steal + No-force
+
+2、redo log，没有undo log，事务回滚不需要做undo操作，因为PG采用的是MVCC，更新操作不是in-place update,而是重新创建tuple，可见性判断
+
+思考：
+
+1、Mysql同样采用MVCC，事务恢复时候为什么需要undo log?
+
+![image-20211202224707934](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112022247503.png)
+
+> Greenplum中对表的修改会把历史的数据完整的保留下来，而在Mysql中存的是数据的差异变化。
+
+### 两阶段提交协议
+
+![image-20211202230231667](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112022302827.png)
+
+![image-20211202230430216](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112022304379.png)
+
+两阶段提交协议需要处理的故障
+
+1、参与者故障
+
+参与者恢复后，根据日志记录来决定重做或撤销事务T，是否有<Ready T>记录？是否有<Commit T>或者<Rollback T>，如果没有，可以询问参与者
+
+2、协调者故障
+
+如果协调者发生故障，参与者必须决定提交或者撤销事务，在某些情况下，参与者并不知道是否提交事务，所以必须等协调者从失败中恢复
+
+#### PostgreSql的两阶段提交
+
+![image-20211204170819314](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112041708825.png)
+
+问题：
+
+1、协调者向参与者发prepare之后，参与者完成prepare相应操作，在发送ready之前，会把日志落盘，那参与者申请的锁会不会释放?
+
+> 答：通过select * from pg_locks，会观察到，这个事务申请的RowExclusive锁还在pg_lock里，所以它并没有释放。因为这个事务还没有完成。
+
+2、在PG里，执行完PREPARE语句之后，此时把数据库停掉（或者杀掉所有数据库进程）再启动起来，会发现pg_locks里，prepared事务所申请的还在pg_lock表里。既然pg_locks是一个内存的数据结构，记录各个backend进程申请的锁，那数据库重启后，为什么已经prepared事务申请的锁仍在pg_lock表呢？
+
+> 答：当执行prepare时候，PG会把该事务的lock信息当做prepare日志记录的一部分记录在日志文件(xlog)里。当数据库重新启动，会读这个日志文件的日志记录，把锁还原到pg_lock表里。
+>
+> 1. StartupXlog函数发现XLOG_XACT_PREPARE日志记录进行redo，调用函数recreateTwoPhaseFile将该日志记录中的信息放到pg_twophase目录下的文件里，每一个prepared事务对应一个文件
+> 2. StartupXlog函数调用recoverPreparedTransaction函数读取pg_twophase目录下的文件并进行相关操作，为该事务重新获取锁
+> 3. 恢复成功后，删掉pg_twophase目录下的文件
+
+#### Greenplum实现分布式事务与并发控制
+
+![image-20211204174429054](https://raw.githubusercontent.com/Jasong321/PicBed/master/202112041744388.png)
