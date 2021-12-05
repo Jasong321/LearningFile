@@ -27,7 +27,7 @@ Greenplum是基于Postgres的开源分布式数据库，从拓扑结构上看，
 
 ![图片](https://mmbiz.qpic.cn/mmbiz_gif/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGkIu5CquhrEQaXM1h3sEPmjWkYB3HdGIUDC8CnNPrFwibGqlV9WqCnzA/640?wx_fmt=gif&tp=webp&wxfrom=5&wx_lazy=1)
 
-每个QE进程会执行分配给它的查询子任务，并将结果返回给QD，**QE之间也是是通过Interconnect交互数据，没有libpq链接（QE之间通信为什么不再用libpq?）**。QE和QD之间通过Libpq协议进行状态更新和管理，包括错误处理等。最终QD会将收集到的查询结果进行汇总，并通过libpq返回给客户端。
+每个QE进程会执行分配给它的查询子任务，并将结果返回给QD，**QE之间也是是通过Interconnect交互数据，没有libpq链接（QE之间通信为什么不再用libpq?1.因为libpq主要是用来传控制信息，不是用来传数据的，都放在一起传输会造成堵塞。）**。QE和QD之间通过Libpq协议进行状态更新和管理，包括错误处理等。最终QD会将收集到的查询结果进行汇总，并通过libpq返回给客户端。
 
 ![图片](https://mmbiz.qpic.cn/mmbiz_gif/iaZJdHJXMOBdicIv4icFZib39G7JPibo3I0ibGttLZg3PWgPaJX21Y9rArZyh3sdnso1Bkch79QzgB1SwMEsIpp6veIQ/640?wx_fmt=gif&tp=webp&wxfrom=5&wx_lazy=1)
 
